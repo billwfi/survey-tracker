@@ -1,4 +1,4 @@
-import { neon } from "@netlify/neon";
+import { getDatabase } from "@netlify/database";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -53,7 +53,13 @@ export default async function handler(req) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
 
-  const sql = neon(process.env.DATABASE_URL);
+  let pool;
+  try {
+    pool = getDatabase().pool;
+  } catch {
+    return json({ error: "Database not provisioned. Enable Netlify DB in the site dashboard." }, 503);
+  }
+
   const url = new URL(req.url);
   const params = url.searchParams;
   const view = params.get("view") || "summary";
@@ -61,7 +67,7 @@ export default async function handler(req) {
 
   // ── Summary KPIs ─────────────────────────────────────────────────────────
   if (view === "summary") {
-    const rows = await sql(`
+    const res = await pool.query(`
       SELECT
         COUNT(*)                                  AS total_responses,
         ROUND(AVG(${TOTAL_SCORE}), 2)             AS avg_total_score,
@@ -73,12 +79,12 @@ export default async function handler(req) {
         ${Q_AVGS}
       FROM survey_responses ${where}
     `, vals);
-    return json(rows[0]);
+    return json(res.rows[0]);
   }
 
   // ── By Facility ──────────────────────────────────────────────────────────
   if (view === "by-facility") {
-    const rows = await sql(`
+    const res = await pool.query(`
       SELECT
         COALESCE(facilitynamenew,'(unknown)') AS facility,
         COUNT(*)                              AS responses,
@@ -88,12 +94,12 @@ export default async function handler(req) {
       GROUP BY facilitynamenew
       ORDER BY avg_total_score DESC NULLS LAST
     `, vals);
-    return json(rows);
+    return json(res.rows);
   }
 
   // ── By Provider ──────────────────────────────────────────────────────────
   if (view === "by-provider") {
-    const rows = await sql(`
+    const res = await pool.query(`
       SELECT
         COALESCE(providerprofile,'(unknown)')  AS provider,
         COALESCE(facilitynamenew,'(unknown)')  AS facility,
@@ -104,12 +110,12 @@ export default async function handler(req) {
       GROUP BY providerprofile, facilitynamenew
       ORDER BY avg_total_score DESC NULLS LAST
     `, vals);
-    return json(rows);
+    return json(res.rows);
   }
 
   // ── By Visit Type ────────────────────────────────────────────────────────
   if (view === "by-visittype") {
-    const rows = await sql(`
+    const res = await pool.query(`
       SELECT
         COALESCE(visittype,'(unknown)') AS visittype,
         COUNT(*)                        AS responses,
@@ -119,29 +125,29 @@ export default async function handler(req) {
       GROUP BY visittype
       ORDER BY avg_total_score DESC NULLS LAST
     `, vals);
-    return json(rows);
+    return json(res.rows);
   }
 
   // ── Monthly Trend ────────────────────────────────────────────────────────
   if (view === "trend") {
-    const dateFilter = where
+    const trendWhere = where
       ? `${where} AND date_of_service IS NOT NULL`
       : `WHERE date_of_service IS NOT NULL`;
-    const rows = await sql(`
+    const res = await pool.query(`
       SELECT
         DATE_TRUNC('month', date_of_service)::DATE AS month,
         COUNT(*)                                    AS responses,
         ROUND(AVG(${TOTAL_SCORE}), 2)              AS avg_total_score
-      FROM survey_responses ${dateFilter}
+      FROM survey_responses ${trendWhere}
       GROUP BY month
       ORDER BY month
     `, vals);
-    return json(rows);
+    return json(res.rows);
   }
 
   // ── Score Distribution ───────────────────────────────────────────────────
   if (view === "distribution") {
-    const rows = await sql(`
+    const res = await pool.query(`
       SELECT
         CASE
           WHEN ${TOTAL_SCORE} >= 4.5 THEN '4.5-5.0'
@@ -155,7 +161,7 @@ export default async function handler(req) {
       GROUP BY bucket
       ORDER BY MIN(${TOTAL_SCORE}) DESC
     `, vals);
-    return json(rows);
+    return json(res.rows);
   }
 
   return json({ error: "Unknown view" }, 400);

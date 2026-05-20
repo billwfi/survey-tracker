@@ -1,4 +1,4 @@
-import { neon } from "@netlify/neon";
+import { getDatabase } from "@netlify/database";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -18,12 +18,12 @@ const TOTAL_SCORE = `ROUND((
   COALESCE(q7_professionalism_score,0) + COALESCE(q8_nursing_care_score,0) +
   COALESCE(q9_overall_rating_score,0)) / 9.0, 2)`;
 
-async function migrate(sql) {
-  await sql(`
+async function migrate(pool) {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS survey_responses (
       id                           SERIAL PRIMARY KEY,
       submission_id                TEXT,
-      submitted_at                 TIMESTAMPTZ,
+      submitted_at                 DATE,
       q1_checkin_process_label     TEXT,
       q1_checkin_process_score     NUMERIC(6,2),
       q2_wait_time_label           TEXT,
@@ -56,11 +56,11 @@ async function migrate(sql) {
       facilitynamenew              TEXT,
       imported_at                  TIMESTAMPTZ DEFAULT NOW()
     )
-  `, []);
-  await sql(`CREATE INDEX IF NOT EXISTS idx_sr_facility   ON survey_responses(facilitynamenew)`, []);
-  await sql(`CREATE INDEX IF NOT EXISTS idx_sr_provider   ON survey_responses(providerprofile)`, []);
-  await sql(`CREATE INDEX IF NOT EXISTS idx_sr_visittype  ON survey_responses(visittype)`, []);
-  await sql(`CREATE INDEX IF NOT EXISTS idx_sr_date       ON survey_responses(date_of_service)`, []);
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sr_facility   ON survey_responses(facilitynamenew)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sr_provider   ON survey_responses(providerprofile)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sr_visittype  ON survey_responses(visittype)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_sr_date       ON survey_responses(date_of_service)`);
 }
 
 function buildWhere(params) {
@@ -107,8 +107,14 @@ function dateVal(v) {
 export default async function handler(req) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
-  const sql = neon(process.env.DATABASE_URL);
-  await migrate(sql);
+  let pool;
+  try {
+    pool = getDatabase().pool;
+  } catch {
+    return json({ error: "Database not provisioned. Enable Netlify DB in the site dashboard." }, 503);
+  }
+
+  await migrate(pool);
 
   const url = new URL(req.url);
   const params = url.searchParams;
@@ -117,19 +123,23 @@ export default async function handler(req) {
   if (req.method === "GET") {
     if (params.get("meta") === "filters") {
       const [fac, prov, vt] = await Promise.all([
-        sql(`SELECT DISTINCT facilitynamenew v FROM survey_responses WHERE facilitynamenew IS NOT NULL AND facilitynamenew <> '' ORDER BY 1`, []),
-        sql(`SELECT DISTINCT providerprofile  v FROM survey_responses WHERE providerprofile  IS NOT NULL AND providerprofile  <> '' ORDER BY 1`, []),
-        sql(`SELECT DISTINCT visittype        v FROM survey_responses WHERE visittype        IS NOT NULL AND visittype        <> '' ORDER BY 1`, []),
+        pool.query(`SELECT DISTINCT facilitynamenew v FROM survey_responses WHERE facilitynamenew IS NOT NULL AND facilitynamenew <> '' ORDER BY 1`),
+        pool.query(`SELECT DISTINCT providerprofile  v FROM survey_responses WHERE providerprofile  IS NOT NULL AND providerprofile  <> '' ORDER BY 1`),
+        pool.query(`SELECT DISTINCT visittype        v FROM survey_responses WHERE visittype        IS NOT NULL AND visittype        <> '' ORDER BY 1`),
       ]);
-      return json({ facilities: fac.map(r => r.v), providers: prov.map(r => r.v), visittypes: vt.map(r => r.v) });
+      return json({
+        facilities: fac.rows.map(r => r.v),
+        providers:  prov.rows.map(r => r.v),
+        visittypes: vt.rows.map(r => r.v),
+      });
     }
 
     const { where, vals } = buildWhere(params);
     const limit  = Math.min(parseInt(params.get("limit")  || "50"), 500);
     const offset = parseInt(params.get("offset") || "0");
 
-    const [rows, cnt] = await Promise.all([
-      sql(
+    const [listRes, cntRes] = await Promise.all([
+      pool.query(
         `SELECT id, submission_id, date_of_service, dateofservice, chartnumber,
                 patientlastname, patientfirstname, providerprofile, facilityname,
                 facilitynamenew, visittype, primarydxicd10, visit_number,
@@ -139,10 +149,10 @@ export default async function handler(req) {
          LIMIT ${limit} OFFSET ${offset}`,
         vals
       ),
-      sql(`SELECT COUNT(*) AS n FROM survey_responses ${where}`, vals),
+      pool.query(`SELECT COUNT(*) AS n FROM survey_responses ${where}`, vals),
     ]);
 
-    return json({ rows, total: parseInt(cnt[0].n), limit, offset });
+    return json({ rows: listRes.rows, total: parseInt(cntRes.rows[0].n), limit, offset });
   }
 
   // ── POST (bulk import) ───────────────────────────────────────────────────
@@ -157,7 +167,7 @@ export default async function handler(req) {
 
     for (const r of records) {
       try {
-        await sql(`
+        await pool.query(`
           INSERT INTO survey_responses (
             submission_id, submitted_at,
             q1_checkin_process_label, q1_checkin_process_score,
@@ -213,7 +223,7 @@ export default async function handler(req) {
         );
         inserted++;
       } catch (err) {
-        errors.push({ row: r.submission_id ?? "?", error: err.message });
+        errors.push({ row: r.submission_id ?? r.SUBMISSION_ID ?? "?", error: err.message });
       }
     }
 
@@ -224,7 +234,7 @@ export default async function handler(req) {
   if (req.method === "DELETE") {
     const id = parseInt(params.get("id") ?? "");
     if (!id) return json({ error: "Invalid id" }, 400);
-    await sql(`DELETE FROM survey_responses WHERE id = $1`, [id]);
+    await pool.query(`DELETE FROM survey_responses WHERE id = $1`, [id]);
     return json({ deleted: true });
   }
 
