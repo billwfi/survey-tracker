@@ -10,5 +10,5 @@ document.addEventListener('DOMContentLoaded', () => {
     const active = page === l.href || (page === '/' && l.href === '/index.html') ? ' active' : '';
     return `<a class="nav-link${active}" href="${l.href}">${l.label}</a>`;
   }).join('');
-  nav.innerHTML = `<span class="nav-brand">Reporting</span><nav class="nav-links">${linkHtml}</nav>`;
+  nav.innerHTML = `<img src="/medallus-logo.png" alt="Medallus Medical North Dakota" class="nav-logo"><span class="nav-brand">Reporting</span><nav class="nav-links">${linkHtml}</nav>`;
 });

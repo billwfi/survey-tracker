@@ -38,6 +38,13 @@ body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
 
+.nav-logo {
+  height: 32px;
+  width: auto;
+  margin-right: 10px;
+  display: block;
+}
+
 .nav-brand {
   font-size: 13px;
   font-weight: 700;
