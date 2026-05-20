@@ -4,11 +4,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const page = location.pathname.replace(/\/$/, '') || '/index.html';
   const links = [
     { href: '/index.html', label: 'Import' },
-    { href: '/reports.html', label: 'Reports' },
+    { href: '/reports.html', label: 'Patient Sat' },
   ];
   const linkHtml = links.map(l => {
     const active = page === l.href || (page === '/' && l.href === '/index.html') ? ' active' : '';
     return `<a class="nav-link${active}" href="${l.href}">${l.label}</a>`;
   }).join('');
-  nav.innerHTML = `<span class="nav-brand">Survey Tracker</span><nav class="nav-links">${linkHtml}</nav>`;
+  nav.innerHTML = `<span class="nav-brand">Reporting</span><nav class="nav-links">${linkHtml}</nav>`;
 });
