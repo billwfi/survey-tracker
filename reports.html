@@ -350,8 +350,9 @@
     document.getElementById('kpi-avg').textContent        = summary.avg_total_score  != null ? parseFloat(summary.avg_total_score).toFixed(2) : '—';
     document.getElementById('kpi-facilities').textContent = summary.facility_count   ?? '—';
     document.getElementById('kpi-providers').textContent  = summary.provider_count   ?? '—';
+    const fmtD = v => v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
     const dr = [summary.earliest_date, summary.latest_date].filter(Boolean);
-    document.getElementById('kpi-dates').textContent = dr.length === 2 ? `${dr[0]} – ${dr[1]}` : (dr[0] || '—');
+    document.getElementById('kpi-dates').textContent = dr.length === 2 ? `${fmtD(dr[0])} – ${fmtD(dr[1])}` : (fmtD(dr[0]) || '—');
 
     // Q averages
     const qVals = Q_KEYS.map(k => parseFloat(summary[k]) || 0);
