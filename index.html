@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import — Survey Tracker</title>
+  <link rel="stylesheet" href="/site.css">
+  <style>
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 24px;
+    }
+    .drop-zone.drag-over { border-color: var(--accent); background: #eff6ff; }
+    .drop-zone .dz-icon { font-size: 36px; margin-bottom: 12px; }
+    .drop-zone p { font-size: 14px; color: var(--text-muted); margin-bottom: 6px; }
+    .drop-zone .dz-browse {
+      display: inline-block;
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+      background: none;
+      border: none;
+      font-size: 14px;
+      font-family: inherit;
+      padding: 0;
+    }
+    .drop-zone .dz-hint { font-size: 12px; color: #94a3b8; }
+
+    .mapping-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .mapping-row {
+      display: contents;
+    }
+    .mapping-csv {
+      padding: 6px 10px;
+      background: var(--slate-light);
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--slate);
+      align-self: center;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mapping-select {
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      width: 100%;
+    }
+    .mapping-select.matched { border-color: #86efac; background: #f0fdf4; }
+    .mapping-select.unmatched { border-color: #fca5a5; background: #fff5f5; }
+
+    .mapping-legend {
+      display: flex;
+      gap: 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+    }
+    .legend-dot.green { background: #86efac; }
+    .legend-dot.red   { background: #fca5a5; }
+
+    .preview-wrap { overflow-x: auto; }
+
+    .import-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    .del-btn {
+      background: none;
+      border: none;
+      color: #dc2626;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .del-btn:hover { background: #fee2e2; }
+
+    .section-gap { margin-top: 28px; }
+  </style>
+</head>
+<body>
+
+<div id="site-nav"></div>
+
+<div class="page-wrap">
+
+  <div class="page-hero">
+    <div class="eyebrow">Survey Tracker</div>
+    <h1>Import Records</h1>
+    <p>Upload a CSV file to import survey responses. Columns are auto-detected from the header row.</p>
+  </div>
+
+  <!-- Drop Zone -->
+  <div id="drop-zone" class="drop-zone">
+    <div class="dz-icon">📤</div>
+    <p>Drop a CSV file here or <button class="dz-browse" onclick="document.getElementById('file-input').click()">browse to upload</button></p>
+    <p class="dz-hint">Supports CSV files up to 500 rows per import</p>
+    <input type="file" id="file-input" accept=".csv,.txt" style="display:none">
+  </div>
+
+  <!-- Import Config (hidden until file chosen) -->
+  <div id="import-config" style="display:none">
+
+    <div class="card">
+      <h2>Column Mapping <span id="file-info" style="font-weight:400;color:var(--text-muted);font-size:12px;"></span></h2>
+      <div class="mapping-legend">
+        <span><span class="legend-dot green"></span>Auto-matched</span>
+        <span><span class="legend-dot red"></span>Not matched (will be skipped)</span>
+      </div>
+      <div class="mapping-grid" id="mapping-grid"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2>Preview <span style="font-weight:400;color:var(--text-muted);font-size:12px;">(first 5 rows)</span></h2>
+      <div class="preview-wrap" id="preview-wrap"></div>
+    </div>
+
+    <div class="import-actions">
+      <button class="btn btn-primary" id="import-btn">Import <span id="import-count">0</span> Records</button>
+      <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
+    </div>
+    <div class="msg" id="import-msg" style="display:none"></div>
+  </div>
+
+  <!-- Recent Records -->
+  <div class="card section-gap" id="records-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h2 style="margin:0;padding:0;border:none">Recent Records</h2>
+      <span class="stat-chip"><strong id="stat-total">—</strong> total records</span>
+    </div>
+    <div id="records-wrap"><div class="loading">Loading…</div></div>
+    <div class="pagination" id="pagination" style="display:none">
+      <button id="pg-prev">← Prev</button>
+      <span id="pg-info"></span>
+      <button id="pg-next">Next →</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="site-footer">Workflow Innovators &nbsp;·&nbsp; Survey Tracker</div>
+
+<script src="/nav.js"></script>
+<script>
+  // ── DB Column definitions ──────────────────────────────────────────────
+  const DB_COLS = [
+    { key: 'submission_id',                label: 'Submission ID' },
+    { key: 'submitted_at',                 label: 'Submitted At' },
+    { key: 'q1_checkin_process_label',     label: 'Q1 Check-in Process Label' },
+    { key: 'q1_checkin_process_score',     label: 'Q1 Check-in Process Score' },
+    { key: 'q2_wait_time_label',           label: 'Q2 Wait Time Label' },
+    { key: 'q2_wait_time_score',           label: 'Q2 Wait Time Score' },
+    { key: 'q3_front_desk_label',          label: 'Q3 Front Desk Label' },
+    { key: 'q3_front_desk_score',          label: 'Q3 Front Desk Score' },
+    { key: 'q4_comfort_cleanliness_label', label: 'Q4 Comfort & Cleanliness Label' },
+    { key: 'q4_comfort_cleanliness_score', label: 'Q4 Comfort & Cleanliness Score' },
+    { key: 'q5_provider_listening_label',  label: 'Q5 Provider Listening Label' },
+    { key: 'q5_provider_listening_score',  label: 'Q5 Provider Listening Score' },
+    { key: 'q6_explanation_clarity_label', label: 'Q6 Explanation Clarity Label' },
+    { key: 'q6_explanation_clarity_score', label: 'Q6 Explanation Clarity Score' },
+    { key: 'q7_professionalism_label',     label: 'Q7 Professionalism Label' },
+    { key: 'q7_professionalism_score',     label: 'Q7 Professionalism Score' },
+    { key: 'q8_nursing_care_label',        label: 'Q8 Nursing Care Label' },
+    { key: 'q8_nursing_care_score',        label: 'Q8 Nursing Care Score' },
+    { key: 'q9_overall_rating_label',      label: 'Q9 Overall Rating Label' },
+    { key: 'q9_overall_rating_score',      label: 'Q9 Overall Rating Score' },
+    { key: 'q10_comments',                 label: 'Q10 Comments' },
+    { key: 'visit_number',                 label: 'Visit Number' },
+    { key: 'dateofservice',                label: 'Date of Service (raw)' },
+    { key: 'chartnumber',                  label: 'Chart Number' },
+    { key: 'patientlastname',              label: 'Patient Last Name' },
+    { key: 'patientfirstname',             label: 'Patient First Name' },
+    { key: 'providerprofile',              label: 'Provider Profile' },
+    { key: 'primarydxicd10',               label: 'Primary DX ICD-10' },
+    { key: 'facilityname',                 label: 'Facility Name' },
+    { key: 'date_of_service',              label: 'Date of Service' },
+    { key: 'visittype',                    label: 'Visit Type' },
+    { key: 'facilitynamenew',              label: 'Facility Name (New)' },
+  ];
+
+  // Normalize for matching: lowercase, strip brackets/underscores/spaces/hyphens
+  function norm(s) { return String(s).toLowerCase().replace(/[\[\]_\s\-]/g, ''); }
+
+  const normMap = {};
+  DB_COLS.forEach(c => { normMap[norm(c.key)] = c.key; normMap[norm(c.label)] = c.key; });
+
+  function autoMap(headers) {
+    return headers.map(h => normMap[norm(h)] || '__skip__');
+  }
+
+  // ── CSV Parser ────────────────────────────────────────────────────────
+  function parseCSV(text) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
+    if (lines.length < 2) return { headers: [], rows: [] };
+    const headers = parseRow(lines[0]);
+    const rows = lines.slice(1).filter(l => l.trim()).map(l => {
+      const vals = parseRow(l);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (vals[i] ?? '').trim(); });
+      return obj;
+    });
+    return { headers, rows };
+  }
+
+  function parseRow(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        result.push(cur); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur);
+    return result;
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────
+  let parsedData = null;
+  let currentMapping = [];
+  let currentPage = 0;
+  const PAGE_SIZE = 50;
+
+  // ── File Handling ──────────────────────────────────────────────────────
+  const dropZone  = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  });
+  dropZone.addEventListener('click', e => {
+    if (e.target.classList.contains('dz-browse')) return;
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) processFile(fileInput.files[0]); });
+
+  function processFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      parsedData = parseCSV(e.target.result);
+      if (!parsedData.headers.length) {
+        showMsg('import-msg', 'error', 'Could not parse CSV — is it a valid comma-separated file?');
+        return;
+      }
+      currentMapping = autoMap(parsedData.headers);
+      renderImportConfig(file.name, parsedData);
+    };
+    reader.readAsText(file);
+  }
+
+  function renderImportConfig(filename, data) {
+    document.getElementById('file-info').textContent = `— ${filename} (${data.rows.length} rows)`;
+    document.getElementById('import-count').textContent = data.rows.length;
+
+    // Mapping grid
+    const grid = document.getElementById('mapping-grid');
+    const optHtml = `<option value="__skip__">— Skip —</option>` +
+      DB_COLS.map(c => `<option value="${c.key}">${c.label}</option>`).join('');
+
+    grid.innerHTML = `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);padding:4px 0;">CSV Column</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);padding:4px 0;">Maps To</div>` +
+      data.headers.map((h, i) => {
+        const matched = currentMapping[i] !== '__skip__';
+        return `<div class="mapping-csv">${h}</div>
+          <select class="mapping-select ${matched ? 'matched' : 'unmatched'}" data-idx="${i}" onchange="updateMapping(this)">
+            ${optHtml}
+          </select>`;
+      }).join('');
+
+    // Set selected values
+    data.headers.forEach((h, i) => {
+      const sel = grid.querySelector(`select[data-idx="${i}"]`);
+      if (sel) sel.value = currentMapping[i];
+    });
+
+    // Preview
+    renderPreview(data);
+
+    document.getElementById('import-config').style.display = 'block';
+    dropZone.style.display = 'none';
+  }
+
+  function updateMapping(sel) {
+    const idx = parseInt(sel.dataset.idx);
+    currentMapping[idx] = sel.value;
+    sel.className = `mapping-select ${sel.value !== '__skip__' ? 'matched' : 'unmatched'}`;
+  }
+
+  function renderPreview(data) {
+    const preview = data.rows.slice(0, 5);
+    const wrap = document.getElementById('preview-wrap');
+    if (!preview.length) { wrap.innerHTML = '<p class="empty-state">No data rows found.</p>'; return; }
+    const headers = data.headers;
+    wrap.innerHTML = `<table class="data-table">
+      <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${preview.map(r => `<tr>${headers.map(h => `<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(r[h] || '').replace(/</g,'&lt;')}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+  }
+
+  document.getElementById('cancel-btn').addEventListener('click', () => {
+    document.getElementById('import-config').style.display = 'none';
+    dropZone.style.display = '';
+    fileInput.value = '';
+    parsedData = null;
+    hideMsg('import-msg');
+  });
+
+  // ── Import ─────────────────────────────────────────────────────────────
+  document.getElementById('import-btn').addEventListener('click', async () => {
+    if (!parsedData) return;
+
+    const btn = document.getElementById('import-btn');
+    btn.disabled = true;
+    btn.textContent = 'Importing…';
+    hideMsg('import-msg');
+
+    const records = parsedData.rows.map(row => {
+      const obj = {};
+      parsedData.headers.forEach((h, i) => {
+        const key = currentMapping[i];
+        if (key && key !== '__skip__') obj[key] = row[h];
+      });
+      return obj;
+    });
+
+    try {
+      const res = await fetch('/.netlify/functions/records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(records),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Import failed');
+
+      const errTxt = result.errors.length ? ` (${result.errors.length} errors)` : '';
+      showMsg('import-msg', 'success', `✓ Imported ${result.inserted} records successfully.${errTxt}`);
+
+      parsedData = null;
+      document.getElementById('import-config').style.display = 'none';
+      dropZone.style.display = '';
+      fileInput.value = '';
+      currentPage = 0;
+      loadRecords();
+    } catch (err) {
+      showMsg('import-msg', 'error', `Import failed: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = `Import ${parsedData ? parsedData.rows.length : ''} Records`;
+    }
+  });
+
+  // ── Records Table ──────────────────────────────────────────────────────
+  async function loadRecords() {
+    const wrap = document.getElementById('records-wrap');
+    wrap.innerHTML = '<div class="loading">Loading…</div>';
+
+    try {
+      const res = await fetch(`/.netlify/functions/records?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}`);
+      const data = await res.json();
+      const { rows, total } = data;
+
+      document.getElementById('stat-total').textContent = total;
+
+      if (!rows.length) {
+        wrap.innerHTML = '<div class="empty-state">No records yet. Import a CSV to get started.</div>';
+        document.getElementById('pagination').style.display = 'none';
+        return;
+      }
+
+      wrap.innerHTML = `<div class="table-wrap"><table class="data-table">
+        <thead><tr>
+          <th>Date of Service</th>
+          <th>Patient</th>
+          <th>Chart #</th>
+          <th>Facility</th>
+          <th>Provider</th>
+          <th>Visit Type</th>
+          <th class="num">Avg Score</th>
+          <th>Comments</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${r.date_of_service || r.dateofservice || '—'}</td>
+          <td style="font-weight:500">${[r.patientlastname, r.patientfirstname].filter(Boolean).join(', ') || '—'}</td>
+          <td style="font-size:12px">${r.chartnumber || '—'}</td>
+          <td><span class="badge">${r.facilitynamenew || r.facilityname || '—'}</span></td>
+          <td style="font-size:12px">${r.providerprofile || '—'}</td>
+          <td style="font-size:12px">${r.visittype || '—'}</td>
+          <td class="num">${scoreColor(r.total_score)}</td>
+          <td style="max-width:200px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)" title="${(r.q10_comments||'').replace(/"/g,'&quot;')}">${(r.q10_comments||'').replace(/</g,'&lt;') || '—'}</td>
+          <td><button class="del-btn" onclick="deleteRecord(${r.id})">✕</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+
+      const totalPages = Math.ceil(total / PAGE_SIZE);
+      const pg = document.getElementById('pagination');
+      if (totalPages > 1) {
+        pg.style.display = 'flex';
+        document.getElementById('pg-info').textContent = `Page ${currentPage + 1} of ${totalPages}`;
+        document.getElementById('pg-prev').disabled = currentPage === 0;
+        document.getElementById('pg-next').disabled = currentPage >= totalPages - 1;
+      } else {
+        pg.style.display = 'none';
+      }
+    } catch (err) {
+      wrap.innerHTML = `<div class="empty-state">Failed to load records: ${err.message}</div>`;
+    }
+  }
+
+  document.getElementById('pg-prev').addEventListener('click', () => { currentPage--; loadRecords(); });
+  document.getElementById('pg-next').addEventListener('click', () => { currentPage++; loadRecords(); });
+
+  async function deleteRecord(id) {
+    if (!confirm('Delete this record?')) return;
+    await fetch(`/.netlify/functions/records?id=${id}`, { method: 'DELETE' });
+    loadRecords();
+  }
+
+  function scoreColor(s) {
+    if (s === null || s === undefined) return '—';
+    const cls = s >= 4.5 ? 'score-high' : s >= 3.0 ? 'score-mid' : 'score-low';
+    return `<span class="${cls}">${s}</span>`;
+  }
+
+  function showMsg(id, type, text) {
+    const el = document.getElementById(id);
+    el.className = `msg ${type}`;
+    el.textContent = text;
+    el.style.display = 'block';
+  }
+  function hideMsg(id) {
+    const el = document.getElementById(id);
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+
+  loadRecords();
+</script>
+</body>
+</html>

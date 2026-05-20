@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — Survey Tracker</title>
+  <link rel="stylesheet" href="/site.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    .chart-box {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .chart-box h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 860px) { .charts-row { grid-template-columns: 1fr; } }
+
+    .table-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .table-card-head {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .table-card-head h3 { font-size: 13px; font-weight: 700; color: var(--text); }
+    .table-card-body { overflow-x: auto; }
+
+    .filter-bar { margin-bottom: 20px; }
+    .filter-bar form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .filter-field { display: flex; flex-direction: column; gap: 4px; }
+    .filter-field label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+
+    .score-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .score-bar-fill {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--navy);
+      min-width: 2px;
+    }
+
+    .q-labels { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-muted); }
+    .q-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .detail-toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .detail-toolbar input {
+      padding: 6px 10px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: #fff;
+      width: 200px;
+    }
+    .detail-toolbar input:focus { outline: 2px solid #93c5fd; border-color: #93c5fd; }
+  </style>
+</head>
+<body>
+
+<div id="site-nav"></div>
+
+<div class="page-wrap">
+
+  <div class="page-hero">
+    <div class="eyebrow">Survey Tracker</div>
+    <h1>Reports &amp; Analytics</h1>
+    <p>Analyze patient satisfaction survey data by facility, provider, and visit type.</p>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-bar card">
+    <form id="filter-form">
+      <div class="filter-field">
+        <label>Facility</label>
+        <select class="filter-select" id="f-facility"><option value="">All Facilities</option></select>
+      </div>
+      <div class="filter-field">
+        <label>Provider</label>
+        <select class="filter-select" id="f-provider"><option value="">All Providers</option></select>
+      </div>
+      <div class="filter-field">
+        <label>Visit Type</label>
+        <select class="filter-select" id="f-visittype"><option value="">All Visit Types</option></select>
+      </div>
+      <div class="filter-divider"></div>
+      <div class="filter-field">
+        <label>Date Start</label>
+        <input class="filter-input" type="date" id="f-date-start">
+      </div>
+      <div class="filter-field">
+        <label>Date End</label>
+        <input class="filter-input" type="date" id="f-date-end">
+      </div>
+      <div class="filter-divider"></div>
+      <button type="submit" class="btn btn-primary">Apply Filters</button>
+      <button type="button" class="btn btn-secondary" id="clear-filters">Clear</button>
+    </form>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-row" id="kpi-row">
+    <div class="kpi-card"><strong id="kpi-total">—</strong><span>Total Responses</span></div>
+    <div class="kpi-card"><strong id="kpi-avg">—</strong><span>Avg Total Score</span></div>
+    <div class="kpi-card"><strong id="kpi-facilities">—</strong><span>Facilities</span></div>
+    <div class="kpi-card"><strong id="kpi-providers">—</strong><span>Providers</span></div>
+    <div class="kpi-card"><strong id="kpi-dates">—</strong><span>Date Range</span></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="facility">By Facility</button>
+    <button class="tab-btn" data-tab="provider">By Provider</button>
+    <button class="tab-btn" data-tab="visittype">By Visit Type</button>
+    <button class="tab-btn" data-tab="detailed">Detailed Records</button>
+  </div>
+
+  <!-- ── Overview ── -->
+  <div id="tab-overview" class="tab-panel active">
+    <div class="charts-row">
+      <div class="chart-box">
+        <h3>Average Score by Question</h3>
+        <canvas id="chart-questions" height="220"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Monthly Response Trend</h3>
+        <canvas id="chart-trend" height="220"></canvas>
+      </div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-box">
+        <h3>Score Distribution</h3>
+        <canvas id="chart-dist" height="200"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Top Facilities by Avg Score</h3>
+        <canvas id="chart-top-facilities" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── By Facility ── -->
+  <div id="tab-facility" class="tab-panel">
+    <div class="table-card">
+      <div class="table-card-head">
+        <h3>Performance by Facility</h3>
+        <span id="facility-count" class="stat-chip"></span>
+      </div>
+      <div class="table-card-body">
+        <div id="facility-table"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+    <div class="chart-box" style="margin-top:16px">
+      <h3>Avg Total Score by Facility</h3>
+      <canvas id="chart-facility" height="180"></canvas>
+    </div>
+  </div>
+
+  <!-- ── By Provider ── -->
+  <div id="tab-provider" class="tab-panel">
+    <div class="table-card">
+      <div class="table-card-head">
+        <h3>Performance by Provider</h3>
+        <span id="provider-count" class="stat-chip"></span>
+      </div>
+      <div class="table-card-body">
+        <div id="provider-table"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+    <div class="chart-box" style="margin-top:16px">
+      <h3>Avg Total Score by Provider</h3>
+      <canvas id="chart-provider" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- ── By Visit Type ── -->
+  <div id="tab-visittype" class="tab-panel">
+    <div class="table-card">
+      <div class="table-card-head">
+        <h3>Performance by Visit Type</h3>
+        <span id="visittype-count" class="stat-chip"></span>
+      </div>
+      <div class="table-card-body">
+        <div id="visittype-table"><div class="loading">Loading…</div></div>
+      </div>
+    </div>
+    <div class="chart-box" style="margin-top:16px">
+      <h3>Avg Total Score by Visit Type</h3>
+      <canvas id="chart-visittype" height="160"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Detailed Records ── -->
+  <div id="tab-detailed" class="tab-panel">
+    <div class="table-card">
+      <div class="table-card-head">
+        <h3>Detailed Records</h3>
+        <div class="detail-toolbar" style="margin:0">
+          <input type="text" id="detail-search" placeholder="Search patient, chart #…">
+          <span id="detail-count" class="stat-chip"></span>
+        </div>
+      </div>
+      <div class="table-card-body">
+        <div id="detail-table"><div class="loading">Loading…</div></div>
+      </div>
+      <div style="padding:12px 16px">
+        <div class="pagination" id="detail-pagination" style="display:none">
+          <button id="det-prev">← Prev</button>
+          <span id="det-info"></span>
+          <button id="det-next">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="site-footer">Workflow Innovators &nbsp;·&nbsp; Survey Tracker</div>
+
+<script src="/nav.js"></script>
+<script>
+  const Q_LABELS = [
+    'Q1 Check-in Process', 'Q2 Wait Time', 'Q3 Front Desk',
+    'Q4 Comfort & Cleanliness', 'Q5 Provider Listening',
+    'Q6 Explanation Clarity', 'Q7 Professionalism',
+    'Q8 Nursing Care', 'Q9 Overall Rating',
+  ];
+  const Q_KEYS = ['q1_avg','q2_avg','q3_avg','q4_avg','q5_avg','q6_avg','q7_avg','q8_avg','q9_avg'];
+  const NAVY = '#1e3a5f';
+  const BLUES = ['#1e3a5f','#1e4d78','#1d6091','#1d73ab','#2186c5','#3399de','#55adf0','#7ec1ff','#a5d8ff'];
+  const ACCENT = '#3b82f6';
+
+  // ── Chart instances ───────────────────────────────────────────────────
+  const charts = {};
+  function mkChart(id, cfg) {
+    if (charts[id]) charts[id].destroy();
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+    charts[id] = new Chart(ctx, cfg);
+  }
+
+  // ── Filter state ──────────────────────────────────────────────────────
+  function filterParams() {
+    const p = new URLSearchParams();
+    const facility  = document.getElementById('f-facility').value;
+    const provider  = document.getElementById('f-provider').value;
+    const visittype = document.getElementById('f-visittype').value;
+    const ds = document.getElementById('f-date-start').value;
+    const de = document.getElementById('f-date-end').value;
+    if (facility)  p.set('facility', facility);
+    if (provider)  p.set('provider', provider);
+    if (visittype) p.set('visittype', visittype);
+    if (ds) p.set('dateStart', ds);
+    if (de) p.set('dateEnd', de);
+    return p;
+  }
+
+  async function fetchReport(view, extra = {}) {
+    const p = filterParams();
+    p.set('view', view);
+    Object.entries(extra).forEach(([k, v]) => p.set(k, v));
+    const res = await fetch(`/.netlify/functions/reports?${p}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async function fetchRecords(extra = {}) {
+    const p = filterParams();
+    Object.entries(extra).forEach(([k, v]) => p.set(k, v));
+    const res = await fetch(`/.netlify/functions/records?${p}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // ── Load filter options ───────────────────────────────────────────────
+  async function loadFilters() {
+    try {
+      const data = await (await fetch('/.netlify/functions/records?meta=filters')).json();
+      const populate = (id, values) => {
+        const sel = document.getElementById(id);
+        const cur = sel.value;
+        sel.innerHTML = `<option value="">All</option>` +
+          values.map(v => `<option value="${v}">${v}</option>`).join('');
+        if (cur) sel.value = cur;
+      };
+      populate('f-facility', data.facilities);
+      populate('f-provider', data.providers);
+      populate('f-visittype', data.visittypes);
+    } catch (_) {}
+  }
+
+  // ── Score formatting ──────────────────────────────────────────────────
+  function fmtScore(v) {
+    if (v === null || v === undefined) return '—';
+    const n = parseFloat(v);
+    const cls = n >= 4.5 ? 'score-high' : n >= 3.0 ? 'score-mid' : 'score-low';
+    return `<span class="${cls}">${n.toFixed(2)}</span>`;
+  }
+
+  function scoreBar(v, max = 5) {
+    if (v === null || v === undefined) return '—';
+    const pct = Math.round((parseFloat(v) / max) * 100);
+    return `<div class="score-bar">
+      <div class="score-bar-fill" style="width:${pct}px;max-width:80px;"></div>
+      ${fmtScore(v)}
+    </div>`;
+  }
+
+  // ── Overview ──────────────────────────────────────────────────────────
+  async function loadOverview() {
+    const [summary, trend, dist, byFac] = await Promise.all([
+      fetchReport('summary'),
+      fetchReport('trend'),
+      fetchReport('distribution'),
+      fetchReport('by-facility'),
+    ]);
+
+    // KPIs
+    document.getElementById('kpi-total').textContent      = summary.total_responses ?? '—';
+    document.getElementById('kpi-avg').textContent        = summary.avg_total_score  != null ? parseFloat(summary.avg_total_score).toFixed(2) : '—';
+    document.getElementById('kpi-facilities').textContent = summary.facility_count   ?? '—';
+    document.getElementById('kpi-providers').textContent  = summary.provider_count   ?? '—';
+    const dr = [summary.earliest_date, summary.latest_date].filter(Boolean);
+    document.getElementById('kpi-dates').textContent = dr.length === 2 ? `${dr[0]} – ${dr[1]}` : (dr[0] || '—');
+
+    // Q averages
+    const qVals = Q_KEYS.map(k => parseFloat(summary[k]) || 0);
+    mkChart('chart-questions', {
+      type: 'bar',
+      data: {
+        labels: Q_LABELS,
+        datasets: [{ label: 'Avg Score', data: qVals, backgroundColor: NAVY, borderRadius: 4 }],
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { min: 0, max: 5, grid: { color: '#f1f5f9' } },
+          y: { grid: { display: false } },
+        },
+      },
+    });
+
+    // Trend
+    mkChart('chart-trend', {
+      type: 'line',
+      data: {
+        labels: trend.map(r => r.month ? r.month.substring(0, 7) : ''),
+        datasets: [{
+          label: 'Avg Score',
+          data: trend.map(r => parseFloat(r.avg_total_score)),
+          borderColor: ACCENT,
+          backgroundColor: 'rgba(59,130,246,0.1)',
+          tension: 0.3,
+          fill: true,
+          pointRadius: 4,
+        }, {
+          label: 'Responses',
+          data: trend.map(r => parseInt(r.responses)),
+          borderColor: '#94a3b8',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          yAxisID: 'y2',
+          pointRadius: 3,
+        }],
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: {
+          y:  { min: 0, max: 5, grid: { color: '#f1f5f9' }, title: { display: true, text: 'Score' } },
+          y2: { position: 'right', grid: { display: false }, title: { display: true, text: 'Responses' } },
+          x:  { grid: { display: false } },
+        },
+      },
+    });
+
+    // Distribution
+    mkChart('chart-dist', {
+      type: 'doughnut',
+      data: {
+        labels: dist.map(r => r.bucket),
+        datasets: [{ data: dist.map(r => parseInt(r.responses)), backgroundColor: BLUES }],
+      },
+      options: {
+        plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } },
+      },
+    });
+
+    // Top facilities
+    const top = byFac.slice(0, 8);
+    mkChart('chart-top-facilities', {
+      type: 'bar',
+      data: {
+        labels: top.map(r => r.facility),
+        datasets: [{ label: 'Avg Score', data: top.map(r => parseFloat(r.avg_total_score)), backgroundColor: NAVY, borderRadius: 4 }],
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { min: 0, max: 5, grid: { color: '#f1f5f9' } },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        },
+      },
+    });
+  }
+
+  // ── By Facility ───────────────────────────────────────────────────────
+  async function loadFacility() {
+    const rows = await fetchReport('by-facility');
+    document.getElementById('facility-count').textContent = `${rows.length} facilities`;
+
+    document.getElementById('facility-table').innerHTML = rows.length === 0
+      ? '<div class="empty-state">No data.</div>'
+      : `<table class="data-table">
+        <thead><tr>
+          <th>Facility</th><th class="num">Responses</th><th class="num">Avg Score</th>
+          ${Q_LABELS.map(l => `<th class="num" title="${l}">${l.split(' ').slice(0,2).join(' ')}</th>`).join('')}
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td><span class="badge">${r.facility}</span></td>
+          <td class="num">${r.responses}</td>
+          <td class="num">${fmtScore(r.avg_total_score)}</td>
+          ${Q_KEYS.map(k => `<td class="num">${fmtScore(r[k])}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+    mkChart('chart-facility', {
+      type: 'bar',
+      data: {
+        labels: rows.map(r => r.facility),
+        datasets: [{ label: 'Avg Score', data: rows.map(r => parseFloat(r.avg_total_score)), backgroundColor: BLUES, borderRadius: 4 }],
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { min: 0, max: 5, grid: { color: '#f1f5f9' } },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        },
+      },
+    });
+  }
+
+  // ── By Provider ───────────────────────────────────────────────────────
+  async function loadProvider() {
+    const rows = await fetchReport('by-provider');
+    document.getElementById('provider-count').textContent = `${rows.length} providers`;
+
+    document.getElementById('provider-table').innerHTML = rows.length === 0
+      ? '<div class="empty-state">No data.</div>'
+      : `<table class="data-table">
+        <thead><tr>
+          <th>Provider</th><th>Facility</th><th class="num">Responses</th><th class="num">Avg Score</th>
+          ${Q_LABELS.map(l => `<th class="num" title="${l}">${l.split(' ').slice(0,2).join(' ')}</th>`).join('')}
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td style="font-weight:500">${r.provider}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${r.facility}</td>
+          <td class="num">${r.responses}</td>
+          <td class="num">${fmtScore(r.avg_total_score)}</td>
+          ${Q_KEYS.map(k => `<td class="num">${fmtScore(r[k])}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+    const topProviders = rows.slice(0, 12);
+    mkChart('chart-provider', {
+      type: 'bar',
+      data: {
+        labels: topProviders.map(r => r.provider),
+        datasets: [{ label: 'Avg Score', data: topProviders.map(r => parseFloat(r.avg_total_score)), backgroundColor: NAVY, borderRadius: 4 }],
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { min: 0, max: 5, grid: { color: '#f1f5f9' } },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        },
+      },
+    });
+  }
+
+  // ── By Visit Type ─────────────────────────────────────────────────────
+  async function loadVisitType() {
+    const rows = await fetchReport('by-visittype');
+    document.getElementById('visittype-count').textContent = `${rows.length} visit types`;
+
+    document.getElementById('visittype-table').innerHTML = rows.length === 0
+      ? '<div class="empty-state">No data.</div>'
+      : `<table class="data-table">
+        <thead><tr>
+          <th>Visit Type</th><th class="num">Responses</th><th class="num">Avg Score</th>
+          ${Q_LABELS.map(l => `<th class="num" title="${l}">${l.split(' ').slice(0,2).join(' ')}</th>`).join('')}
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td style="font-weight:500">${r.visittype}</td>
+          <td class="num">${r.responses}</td>
+          <td class="num">${fmtScore(r.avg_total_score)}</td>
+          ${Q_KEYS.map(k => `<td class="num">${fmtScore(r[k])}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+    mkChart('chart-visittype', {
+      type: 'bar',
+      data: {
+        labels: rows.map(r => r.visittype),
+        datasets: [{ label: 'Avg Score', data: rows.map(r => parseFloat(r.avg_total_score)), backgroundColor: BLUES, borderRadius: 4 }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { min: 0, max: 5, grid: { color: '#f1f5f9' } },
+        },
+      },
+    });
+  }
+
+  // ── Detailed Records ──────────────────────────────────────────────────
+  let detailPage = 0;
+  const DETAIL_PAGE = 25;
+
+  async function loadDetail() {
+    const search = document.getElementById('detail-search').value.trim();
+    const p = { limit: DETAIL_PAGE, offset: detailPage * DETAIL_PAGE };
+    if (search) p.search = search;
+
+    const data = await fetchRecords(p);
+    const { rows, total } = data;
+
+    document.getElementById('detail-count').textContent = `${total} records`;
+
+    document.getElementById('detail-table').innerHTML = rows.length === 0
+      ? '<div class="empty-state">No records match the current filters.</div>'
+      : `<table class="data-table">
+        <thead><tr>
+          <th>Date</th><th>Patient</th><th>Chart #</th><th>Facility</th>
+          <th>Provider</th><th>Visit Type</th><th>DX ICD-10</th>
+          <th class="num">Avg Score</th><th>Comments</th>
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td style="white-space:nowrap;font-size:12px">${r.date_of_service || r.dateofservice || '—'}</td>
+          <td style="white-space:nowrap">${[r.patientlastname, r.patientfirstname].filter(Boolean).join(', ') || '—'}</td>
+          <td style="font-size:12px">${r.chartnumber || '—'}</td>
+          <td><span class="badge">${r.facilitynamenew || r.facilityname || '—'}</span></td>
+          <td style="font-size:12px">${r.providerprofile || '—'}</td>
+          <td style="font-size:12px">${r.visittype || '—'}</td>
+          <td style="font-size:12px">${r.primarydxicd10 || '—'}</td>
+          <td class="num">${fmtScore(r.total_score)}</td>
+          <td style="max-width:220px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)" title="${(r.q10_comments||'').replace(/"/g,'&quot;')}">${(r.q10_comments||'').replace(/</g,'&lt;') || '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+    const totalPages = Math.ceil(total / DETAIL_PAGE);
+    const pg = document.getElementById('detail-pagination');
+    if (totalPages > 1) {
+      pg.style.display = 'flex';
+      document.getElementById('det-info').textContent = `Page ${detailPage + 1} of ${totalPages}`;
+      document.getElementById('det-prev').disabled = detailPage === 0;
+      document.getElementById('det-next').disabled = detailPage >= totalPages - 1;
+    } else {
+      pg.style.display = 'none';
+    }
+  }
+
+  document.getElementById('det-prev').addEventListener('click', () => { detailPage--; loadDetail(); });
+  document.getElementById('det-next').addEventListener('click', () => { detailPage++; loadDetail(); });
+
+  let searchTimer;
+  document.getElementById('detail-search').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { detailPage = 0; loadDetail(); }, 350);
+  });
+
+  // ── Tabs ──────────────────────────────────────────────────────────────
+  const tabLoaders = {
+    overview: loadOverview,
+    facility: loadFacility,
+    provider: loadProvider,
+    visittype: loadVisitType,
+    detailed: loadDetail,
+  };
+  let activeTab = 'overview';
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.tab;
+      document.getElementById(`tab-${activeTab}`).classList.add('active');
+      tabLoaders[activeTab]();
+    });
+  });
+
+  // ── Filters ───────────────────────────────────────────────────────────
+  document.getElementById('filter-form').addEventListener('submit', e => {
+    e.preventDefault();
+    detailPage = 0;
+    tabLoaders[activeTab]();
+    if (activeTab !== 'overview') loadOverview(); // keep KPIs fresh
+  });
+
+  document.getElementById('clear-filters').addEventListener('click', () => {
+    document.getElementById('f-facility').value   = '';
+    document.getElementById('f-provider').value   = '';
+    document.getElementById('f-visittype').value  = '';
+    document.getElementById('f-date-start').value = '';
+    document.getElementById('f-date-end').value   = '';
+    detailPage = 0;
+    loadAll();
+  });
+
+  function loadAll() {
+    loadOverview();
+    if (activeTab !== 'overview') tabLoaders[activeTab]();
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  loadFilters().then(() => loadOverview());
+</script>
+</body>
+</html>
