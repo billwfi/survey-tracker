@@ -94,9 +94,14 @@ function num(v) {
 }
 
 function dateVal(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d) ? null : v;
+  if (!v || String(v).trim() === "") return null;
+  const s = String(v).trim();
+  // M/D/YYYY or MM/DD/YYYY → YYYY-MM-DD
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  // Already ISO-like (YYYY-MM-DD...)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  return null;
 }
 
 export default async function handler(req) {
@@ -173,7 +178,7 @@ export default async function handler(req) {
           )`,
           [
             r.submission_id   ?? r.SUBMISSION_ID   ?? null,
-            r.submitted_at    ?? r.SUBMITTED_AT    ?? null,
+            dateVal(r.submitted_at ?? r.SUBMITTED_AT),
             r.q1_checkin_process_label     ?? r.Q1_CHECKIN_PROCESS_LABEL     ?? null,
             num(r.q1_checkin_process_score ?? r.Q1_CHECKIN_PROCESS_SCORE),
             r.q2_wait_time_label           ?? r.Q2_WAIT_TIME_LABEL           ?? null,
