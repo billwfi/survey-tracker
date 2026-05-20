@@ -41,8 +41,8 @@ body {
 .nav-logo {
   height: 32px;
   width: auto;
-  margin-right: 10px;
   display: block;
+  margin-left: auto;
 }
 
 .nav-brand {
